@@ -24,11 +24,11 @@ class Point:
 		return abs(lhs - rhs) < Self.eps
 
 	def normalisation(self, onZero = None):
-		norm = size()
+		norm = self.size()
 		if self.close(norm, 0.0):
 			if onZero is not None:
 				normalised = onZero
-			else
+			else:
 				raise ValueError("Zero-length vector cannot be normalised.")
 		else:
 			normalised = self / norm
@@ -43,14 +43,14 @@ class Point:
 	def __add__(self, rhs):
 		return Point(*map(lambda l, r: l + r, self._data, rhs._data))
 
-	def __div__(self, rhs):
-		return Point(*map(lambda v: v / rhs, self._data))
-    
-  def __mul__(self, rhs):
-    return Point(*map(lambda v: v * rhs, self._data))
+	def __mul__(self, rhs):
+		return Point(*map(lambda v: v * rhs, self._data))
 
 	def __sub__(self, rhs):
 		return Point(*map(lambda l, r: l - r, self._data, rhs._data))
+
+	def __truediv__(self, rhs):
+		return Point(*map(lambda v: v / rhs, self._data))
 
 
 
@@ -157,7 +157,7 @@ class Placer:
 	def computeForce(self, source, target):
 		difference = target.position - source.position
 		difference, size = difference.normalisation(keepZero = True)
-    return difference * (self.areaRadius * 2 - size) * source.force
+		return difference * (self.areaRadius * 2 - size) * source.force
 
 
 
