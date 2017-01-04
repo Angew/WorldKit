@@ -19,15 +19,22 @@ class Point:
 			data[components.index(c)] = v
 		self._data = tuple(data)
 
+	def isClose(self, rhs):
+		return self.close(self, rhs)
+
 	@classmethod
 	def close(Self, lhs, rhs):
-		return abs(lhs - rhs) < Self.eps
+		if isinstance(lhs, Self) and isinstance(rhs, Self):
+			return all(map(lambda l, r: Self.close(l, r), lhs._data, rhs._data))
+		else:
+			return abs(lhs - rhs) < Self.eps
 
 	def normalisation(self, onZero = None):
 		norm = self.size()
 		if self.close(norm, 0.0):
 			if onZero is not None:
 				normalised = onZero
+				norm = 0.0
 			else:
 				raise ValueError("Zero-length vector cannot be normalised.")
 		else:
@@ -43,8 +50,14 @@ class Point:
 	def __add__(self, rhs):
 		return Point(*map(lambda l, r: l + r, self._data, rhs._data))
 
+	def __eq__(self, rhs):
+		return all(map(lambda l, r: l == r, self._data, rhs._data))
+
 	def __mul__(self, rhs):
 		return Point(*map(lambda v: v * rhs, self._data))
+
+	def __rmul__(self, lhs):
+		return self * lhs
 
 	def __sub__(self, rhs):
 		return Point(*map(lambda l, r: l - r, self._data, rhs._data))
