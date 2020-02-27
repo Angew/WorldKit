@@ -8,6 +8,7 @@ declination_per_day = math.radians(360)/365.24
 eccentricity = 0.0167
 # perihelion_day = 12
 perihelion_day = 0 # By DM fiat, perihelion occurs on solstice noon (it happened in 1246 AD, so what)
+# ToDo: perihelion moves by 1 day per 58 years, do I want this in?
 solstice_declination = math.radians(-23.44)
 
 def declination(time):
