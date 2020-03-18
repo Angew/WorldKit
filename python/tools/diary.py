@@ -1,22 +1,29 @@
 import argparse
 import os.path
-import skyfield
+import skyfield.almanac
+import skyfield.api
 import sys
 
 
 # Julian date = days since 1 Jan -4713
 
 timescale = skyfield.api.load.timescale(builtin=True)
-planets = skyfield.api.load("de406.bsp")  # goes from -3000 to +3000
+sf_load = skyfield.api.Loader(os.path.join(os.path.dirname(sys.path[0]), "skyfield_data", "loaded"))
+planets = sf_load("de406.bsp")  # goes from -3000 to +3000
 
 
 def find_epoch(options):
-    skyfield.almanac.find_discrete(
-        timescale.tt_jd(1_000_000)  # Roughly -2000
-        , timescale.tt_jd(2_500_000)  # Roughly +2000
+    print("Started")
+    t, s = skyfield.almanac.find_discrete(
+        # timescale.tt_jd(1_000_000)  # Roughly -2000
+        # , timescale.tt_jd(2_500_000)  # Roughly +2000
+        timescale.tt_jd(2_000_000)
+        , timescale.tt_jd(2_001_000)
         , skyfield.almanac.seasons(planets)
         , epsilon = 1/24/2  # Half-hour precision is good enough
     )
+    solstices = (p for p in zip(t, s) if p[1] == 3)
+    print("\n".join((str(p[0].tt) for p in solstices)))
 
 
 def main(args):
@@ -24,6 +31,7 @@ def main(args):
         prog=os.path.basename(args[0]),
         description="Diary processing tool",
     )
+    parser.set_defaults(process=lambda _: parser.parse_args(['-h']))
     subcommands = parser.add_subparsers()
     command_find_epoch = subcommands.add_parser(
         "find-epoch"
