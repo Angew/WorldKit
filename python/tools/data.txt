@@ -1,0 +1,2 @@
+Let's take the year 1067 (i.e. from Winter Solstice 1066) as the epoch, to equate Erilon's invasion with that of William the Conqueror.
+So the Julian date of the epoch solstice is 2110763.2951034037 (A.D. 1066-Dec-21 19:04:14.7501 UTC)

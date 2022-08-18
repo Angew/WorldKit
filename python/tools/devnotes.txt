@@ -1,0 +1,4 @@
+sun.py (and to a degree kallanireth.py) is obviously a remnant from trying to compute the astro-stuff manually.
+I must have then abandoned it in favour of skyfield, which is used in diary.py.
+
+I may want to resurrect kallanireth.py for use in diary printing, but sun.py is probably dead code.
