@@ -111,30 +111,39 @@ class DiaryPage:
         self._units = lambda v: units(SvgUnits, v)
 
     def u(self, val):
+        """Convert `val` using page's units"""
         return self._units(val)
 
     def from_tl(self, x, y):
+        """Convert units offset from page's top-left corner. Positive offset into page"""
         return (self._units(self._top_left[0]+x), self._units(self._top_left[1]+y))
 
     def from_tr(self, x, y):
+        """Convert units offset from page's top-right corner. Positive offset into page"""
         return (self._units(self._bottom_right[0]-x), self._units(self._top_left[1]+y))
 
     def from_bl(self, x, y):
+        """Convert units offset from page's bottom-left corner. Positive offset into page"""
         return (self._units(self._top_left[0]+x), self._units(self._bottom_right[1]-y))
 
     def from_br(self, x, y):
+        """Convert units offset from page's bottom-right corner. Positive offset into page"""
         return (self._units(self._bottom_right[0]-x), self._units(self._bottom_right[1]-y))
 
     def top_left(self):
+        """Page's top-left corner converted in units"""
         return map(self._units, self._top_left)
 
     def bottom_right(self):
+        """Page's bottom-right corner converted in units"""
         return map(self._units, self._bottom_right)
 
     def size(self):
+        """Page's size converted in units"""
         return map(self._units, self._size)
 
     def subpage(self, top_left, size):
+        """Return a new page offset from page's top left corner"""
         return self.__class__(tuple(p+q for p, q in zip(self._top_left, top_left)), size)
 
 
@@ -152,6 +161,8 @@ class Diary:
 
     def generate(self):
         u = SvgUnits()
+        # ToDo: svg pages
+        # ToDo: enough pages for entire year
         dwg = svgwrite.Drawing("diary.svg", (u.mm(297), u.mm(210)))
         page_size = (100+self.ROW_HEIGHT, 7*self.ROW_HEIGHT)
         self.add_page(dwg, DiaryPage((15, 5), page_size))
@@ -159,6 +170,9 @@ class Diary:
         dwg.saveas(os.path.join(self.options.output, dwg.filename))
 
     def add_page(self, dwg, page):
+        """
+        Draw one page into `dwg` (sized as `page`)
+        """
         u = SvgUnits()
         # Boundary
         dwg.add(dwg.rect(
@@ -207,8 +221,14 @@ class Diary:
             ))
             # Content
             self.draw_sun(dwg, square.subpage((0, self.ROW_HEIGHT-14), (7, 7)))
+            # ToDo: actual varying content here
 
     def draw_sun(self, dwg, area):
+        """
+        Draw sun icon in the middle of `area`
+
+        `area` must be square
+        """
         c = area._size[0]/2
         dwg.add(dwg.circle(
             center=(area.from_tl(c, c)),
