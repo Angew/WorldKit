@@ -1,9 +1,11 @@
 import argparse
 import enum
+import os
 import os.path
 import math
 import skyfield.almanac
 import skyfield.api
+import svgwrite
 import sys
 
 
@@ -90,6 +92,147 @@ def find_epoch(options):
     print("\n".join(f"{p.tt} ({p.utc_jpl()}) - ({s.utc_jpl()})" for p, s in candidates))
 
 
+class SvgUnits:
+    def cm(self, val):
+        return f"{val}cm"
+
+    def mm(self, val):
+        return f"{val}mm"
+
+
+class DiaryPage:
+    """
+    Offset manager for one diary page (the drawn rectangle)
+    """
+    def __init__(self, top_left, size, units=SvgUnits.mm):
+        self._size = size
+        self._top_left = top_left
+        self._bottom_right = tuple(p+s for p, s in zip(top_left, size))
+        self._units = lambda v: units(SvgUnits, v)
+
+    def u(self, val):
+        return self._units(val)
+
+    def from_tl(self, x, y):
+        return (self._units(self._top_left[0]+x), self._units(self._top_left[1]+y))
+
+    def from_tr(self, x, y):
+        return (self._units(self._bottom_right[0]-x), self._units(self._top_left[1]+y))
+
+    def from_bl(self, x, y):
+        return (self._units(self._top_left[0]+x), self._units(self._bottom_right[1]-y))
+
+    def from_br(self, x, y):
+        return (self._units(self._bottom_right[0]-x), self._units(self._bottom_right[1]-y))
+
+    def top_left(self):
+        return map(self._units, self._top_left)
+
+    def bottom_right(self):
+        return map(self._units, self._bottom_right)
+
+    def size(self):
+        return map(self._units, self._size)
+
+    def subpage(self, top_left, size):
+        return self.__class__(tuple(p+q for p, q in zip(self._top_left, top_left)), size)
+
+
+class Diary:
+    def __init__(self, options):
+        self.options = options
+        self.ROW_HEIGHT = 28.5
+        if os.pardir in options.output:
+            raise ValueError(f"{os.pardir} in output path is not supported yet.")
+        os.makedirs(options.output, exist_ok=True)
+        self.fill_stroke = {
+            "fill": "none",
+            "stroke": "black"
+        }
+
+    def generate(self):
+        u = SvgUnits()
+        dwg = svgwrite.Drawing("diary.svg", (u.mm(297), u.mm(210)))
+        page_size = (100+self.ROW_HEIGHT, 7*self.ROW_HEIGHT)
+        self.add_page(dwg, DiaryPage((15, 5), page_size))
+        self.add_page(dwg, DiaryPage((297/2+15, 5), page_size))
+        dwg.saveas(os.path.join(self.options.output, dwg.filename))
+
+    def add_page(self, dwg, page):
+        u = SvgUnits()
+        # Boundary
+        dwg.add(dwg.rect(
+            insert=page.top_left(),
+            size=page.size(),
+            **self.fill_stroke
+        ))
+        # Splitters
+        for row in range(1, 7):
+            y = row*self.ROW_HEIGHT
+            dwg.add(dwg.line(
+                start=page.from_tl(0, y),
+                end=page.from_tr(0, y),
+                stroke_width=2,
+                **self.fill_stroke
+            ))
+        for x in self.ROW_HEIGHT, self.ROW_HEIGHT+60:
+            dwg.add(dwg.line(
+                start=page.from_tl(x, 0),
+                end=page.from_bl(x, 0),
+                **self.fill_stroke
+            ))
+        # Rows
+        for row_num in range(7):
+            row = page.subpage((0, row_num * self.ROW_HEIGHT), (page._size[0], self.ROW_HEIGHT))
+            square = row.subpage((0, 0), (self.ROW_HEIGHT, self.ROW_HEIGHT))
+            # Lines
+            y = 0
+            for offset in 7, 7, 5:
+                y += offset
+                dwg.add(dwg.line(
+                    start=square.from_bl(0, y),
+                    end=square.from_br(0, y),
+                    **self.fill_stroke
+                ))
+            for x in 7, 7 + (self.ROW_HEIGHT-7)/2:
+                dwg.add(dwg.line(
+                    start=square.from_bl(x, 14),
+                    end=square.from_bl(x, 0),
+                    **self.fill_stroke
+                ))
+            dwg.add(dwg.line(
+                start=row.from_br(40, 10),
+                end=row.from_br(0, 10),
+                **self.fill_stroke
+            ))
+            # Content
+            self.draw_sun(dwg, square.subpage((0, self.ROW_HEIGHT-14), (7, 7)))
+
+    def draw_sun(self, dwg, area):
+        c = area._size[0]/2
+        dwg.add(dwg.circle(
+            center=(area.from_tl(c, c)),
+            r=area.u(c*0.3),
+            **self.fill_stroke
+        ))
+        r1 = c*0.4
+        r2 = c*0.8
+        for i in range(12):
+            angle = i * math.pi/6
+            dwg.add(dwg.line(
+                start=area.from_tl(c + math.cos(angle)*r1, c + math.sin(angle)*r1),
+                end=area.from_tl(c + math.cos(angle)*r2, c + math.sin(angle)*r2),
+                **self.fill_stroke
+            ))
+
+
+def generate_diary(options):
+    """
+    Generate all necessary SVG file(s) for one year of a diary
+    """
+    Diary(options).generate()
+
+
 def play(options):
     """
     Development command to test/run whatever I need in the script.
@@ -112,6 +255,18 @@ def main(args):
         description="Find a suitable epoch time based on leap year requirements",
     )
     command_find_epoch.set_defaults(process=find_epoch)
+
+    command_generate_diary = subcommands.add_parser(
+        "generate-diary",
+        description="Generate SVG file(s) for a diary",
+    )
+    command_generate_diary.set_defaults(process=generate_diary)
+    command_generate_diary.add_argument(
+        "-o", "--output",
+        help="Output directory",
+        metavar="OUTPUT_DIR",
+        default=".",
+    )
 
     command_play = subcommands.add_parser(
         "play",
