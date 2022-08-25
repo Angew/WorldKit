@@ -5,6 +5,7 @@ import os.path
 import math
 import skyfield.almanac
 import skyfield.api
+from skyfield.api import wgs84
 import svgwrite
 import sys
 
@@ -51,6 +52,25 @@ sf_load = skyfield.api.Loader(os.path.join(script_dir, "skyfield_data", "loaded"
 planets = sf_load("de406.bsp")  # goes from -3000 to +3000
 
 
+
+# Data
+
+class Landmarks:
+    Brasel = wgs84.latlon(55.6 * skyfield.api.N, 0)
+
+    north_tip = wgs84.latlon(60.165 * skyfield.api.N, 1.25 * skyfield.api.E)
+
+    @staticmethod
+    def get_midpoint(a, b):
+        return wgs84.latlon(
+            (a.latitude.degrees + b.latitude.degrees)/2,
+            (a.longitude.degrees + b.longitude.degrees)/2
+        )
+
+
+EPOCH_MIDNIGHT = 2110762.5 # Midnight of Solstice day
+
+
 class Season(enum.IntEnum):
     """
     My enum to match values skyfield uses.
@@ -60,6 +80,39 @@ class Season(enum.IntEnum):
     Autumn = 2
     Winter = 3
 
+
+class Twilight(enum.IntEnum):
+    """
+    My enum to match return values of skyfield.almanac.dark_twilight_day
+    """
+    Night = 0
+    Astronomical = 1
+    Nautical = 2
+    Civil = 3
+    Day = 4
+
+
+# Computations
+
+class Compute:
+    @classmethod
+    def day_length(cls, point, day):
+        goal_func = skyfield.almanac.sunrise_sunset(planets, point)
+        t = skyfield.almanac.find_discrete(
+            timescale.tt_jd(EPOCH_MIDNIGHT+day),
+            timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
+            goal_func,
+            epsilon=1/24/60 # 1 minute precision
+        )[0]
+        return t[1] - t[0]
+
+    @classmethod
+    def day_lengths(cls, point, when=None):
+        when = when or range(366)
+        return [cls.day_length(point, day) for day in when]
+
+
+# Commands
 
 def find_epoch(options):
     """
@@ -173,6 +226,7 @@ class Diary:
         """
         Draw one page into `dwg` (sized as `page`)
         """
+        # Notes to change: 7mm x 3mm is enough for raw time text
         u = SvgUnits()
         # Boundary
         dwg.add(dwg.rect(
@@ -222,6 +276,12 @@ class Diary:
             # Content
             self.draw_sun(dwg, square.subpage((0, self.ROW_HEIGHT-14), (7, 7)))
             # ToDo: actual varying content here
+            dwg.add(dwg.text(
+                "23:59",
+                insert=square.from_bl(7.5, 7.5),
+                font_family="sans-serif",
+                font_size=10,
+            ))
 
     def draw_sun(self, dwg, area):
         """
@@ -251,6 +311,104 @@ def generate_diary(options):
     Generate all necessary SVG file(s) for one year of a diary
     """
     Diary(options).generate()
+
+
+def analyse_times(options):
+    """
+    Display various analyses of event times (e.g. twilight)
+
+    Used to guide DM's decisions on which things must be present in the diary
+    and which can be interpolated/eyeballed.
+    """
+    # Is there a day when the northmost point of Varkania experiences no full night?
+    # Known results: days 142-224
+    if options.twilight:
+        print("Twilight")
+        print("========")
+        def goal_func(time):
+            return skyfield.almanac.dark_twilight_day(planets, Landmarks.north_tip)(time) < Twilight.Nautical
+        goal_func.rough_period = 0.5
+
+        for day in range(366):
+            times, events = skyfield.almanac.find_discrete(
+                timescale.tt_jd(EPOCH_MIDNIGHT+day),
+                timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
+                goal_func,
+                epsilon=1/24/60 # 1 minute precision
+            )
+
+            if not times:
+                print("No full night on day", day)
+
+    # Is there a day when Brasel experiences no full night?
+    # Known results: days 165-202
+    if options.twilight_brasel:
+        print("Twilight in Brasel")
+        print("==================")
+        def goal_func(time):
+            return skyfield.almanac.dark_twilight_day(planets, Landmarks.Brasel)(time) < Twilight.Nautical
+        goal_func.rough_period = 0.5
+
+        for day in range(366):
+            times, events = skyfield.almanac.find_discrete(
+                timescale.tt_jd(EPOCH_MIDNIGHT+day),
+                timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
+                goal_func,
+                epsilon=1/24/60 # 1 minute precision
+            )
+
+            if not times:
+                print("No full night on day", day)
+
+    # Is there a day when the northmost point of Varkania experiences nothing but daylight?
+    # Known resulys: no
+    if options.dawn:
+        print("Dawn")
+        print("====")
+        def goal_func(time):
+            return skyfield.almanac.dark_twilight_day(planets, Landmarks.north_tip)(time) < Twilight.Day
+        goal_func.rough_period = 0.5
+
+        for day in range(366):
+            times, events = skyfield.almanac.find_discrete(
+                timescale.tt_jd(EPOCH_MIDNIGHT+day),
+                timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
+                goal_func,
+                epsilon=1/24/60 # 1 minute precision
+            )
+
+            if not times:
+                print("No twilight on day", day)
+
+    # Variation in day lengths between Brasel and Varkania's northmost point
+    if options.day_variation:
+        print("Day length variation")
+        print("====================")
+        days = {}
+        for point in "north_tip", "Brasel":
+            days[point] = Compute.day_lengths(getattr(Landmarks, point))
+        variations = [abs(n - b)*24 for n, b in zip(*days.values())]
+        for v in variations:
+            print("Variation", v)
+        m, M = min(variations), max(variations)
+        print("Largest variation [h]:", M)
+        print("Smallest variation [h]:", m)
+
+    # Difference between midpoint day length interpolation and computation
+    # Known data: difference is at most 0.088 h => linearity's fine
+    if options.day_linearity:
+        print("Day length linearity")
+        print("====================")
+        days = {}
+        for point in "north_tip", "Brasel":
+            days[point] = Compute.day_lengths(getattr(Landmarks, point))
+        computed = Compute.day_lengths(Landmarks.get_midpoint(Landmarks.Brasel, Landmarks.north_tip))
+        linear = [(a+b)/2 for a, b in zip(*days.values())]
+        diffs = [abs(c-l)*24 for c, l in zip(computed, linear)]
+        m, M = min(diffs), max(diffs)
+        print("Largest diff [h]:", M)
+        print("Smallest diff [h]:", m)
+
 
 
 def play(options):
@@ -286,6 +444,37 @@ def main(args):
         help="Output directory",
         metavar="OUTPUT_DIR",
         default=".",
+    )
+
+    command_analyse_times = subcommands.add_parser(
+        "analyse-times",
+        description="Different analyses of event times (e.g. twilight)",
+    )
+    command_analyse_times.set_defaults(process=analyse_times)
+    command_analyse_times.add_argument(
+        "--twilight",
+        help="Days when north tip has no full night",
+        action="store_true",
+    )
+    command_analyse_times.add_argument(
+        "--twilight-brasel",
+        help="Days when Brasel has no full night",
+        action="store_true",
+    )
+    command_analyse_times.add_argument(
+        "--dawn",
+        help="Days when north tip has full day",
+        action="store_true",
+    )
+    command_analyse_times.add_argument(
+        "--day-variation",
+        help="Day length differences between north and Brasel",
+        action="store_true",
+    )
+    command_analyse_times.add_argument(
+        "--day-linearity",
+        help="Day length differences from linearity at midpoint",
+        action="store_true",
     )
 
     command_play = subcommands.add_parser(
