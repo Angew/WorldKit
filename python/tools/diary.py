@@ -10,6 +10,28 @@ import svgwrite
 import sys
 
 
+# ToDo and notes
+#
+# * Invent tide formula
+#   o Validate against some db
+#   (Tides by https://moon.nasa.gov/moon-in-motion/tides/)
+#
+# * Rearrange left box
+
+# Notes on Tides
+#
+# I won't get the landmass-dependent parts right anyway, so super-fine
+# accuracy is unnecessary. Let's set high tide to "50 minutes before
+# Earth's centre - Observer - Moon form a line in the equatorial plane."
+# Note that there may not be a need for actual projection: longitude and
+# right ascension are both along the equator, and I don't care about
+# distances, only about directions. However, the vernal equinox (right
+# ascension 0h) is fixed in space, it doesn't rotate with the Earth.
+# So, IIUC, "form a line" means that the Observer's RA is the same as
+# the Moon's. And since it's all wibbly-wobbly anyway, that sounds good
+# enough for me.
+
+
 def adjacent_filter(it, pred):
     it = iter(it)
     try:
