@@ -223,6 +223,20 @@ class DiaryPage:
 
 
 class Diary:
+    # Information in one row:
+    # Party notes
+    # World notes
+    # Weather
+    # Varkania date
+    # Earth date
+    # Moon phase
+    # Dawn time: Brasel + northtip OR Brasel + miles to north dawn point
+    # Sunrise time: Brasel + northtip
+    # Sunset time: Brasel + northtip
+    # Dusk time: Brasel + northtip OR Brasel + miles to north dusk point
+    # ...
+    # Lunar eclipse, if any
+    # Solar eclipse, if any
     def __init__(self, options):
         self.options = options
         self.ROW_HEIGHT = 28.5
