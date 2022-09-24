@@ -90,7 +90,7 @@ class Landmarks:
         )
 
 
-EPOCH_MIDNIGHT = 2110762.5 # Midnight of Solstice day
+EPOCH_MIDNIGHT = 2110762.5 # Midnight on start of Solstice day
 
 
 class Season(enum.IntEnum):
@@ -383,7 +383,7 @@ def analyse_times(options):
                 print("No full night on day", day)
 
     # Is there a day when the northmost point of Varkania experiences nothing but daylight?
-    # Known resulys: no
+    # Known results: no
     if options.dawn:
         print("Dawn")
         print("====")
