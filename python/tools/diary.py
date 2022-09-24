@@ -133,6 +133,27 @@ class Compute:
         when = when or range(366)
         return [cls.day_length(point, day) for day in when]
 
+    @classmethod
+    def moonrise(cls, point, day):
+        moon = planets["Moon"]
+        goal_func = skyfield.almanac.risings_and_settings(
+            planets, moon, point, radius_degrees=0.25)
+        for t, up in zip(*skyfield.almanac.find_discrete(
+            timescale.tt_jd(EPOCH_MIDNIGHT+day),
+            timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
+            goal_func,
+            epsilon=1/24/60 # 1 minute precision
+        )):
+            if up:
+                return t
+        return None
+
+
+    @classmethod
+    def moonrises(cls, point, when=None):
+        when = when or range(366)
+        return [cls.moonrise(point, day) for day in when]
+
 
 # Commands
 
@@ -445,6 +466,24 @@ def analyse_times(options):
         print("Largest diff [h]:", M)
         print("Smallest diff [h]:", m)
 
+    # Variation in Moonrise time between Brasel and northtip
+    # Known result: 33min
+    if options.moonrise_variation:
+        print("Moonrise variation")
+        print("==================")
+        rises = {}
+        for point in "north_tip", "Brasel":
+            rises[point] = Compute.moonrises(getattr(Landmarks, point))
+
+        variations = [(n - b)*24*60 for n, b in zip(*rises.values()) if n is not None and b is not None]
+        for v in variations:
+            print("Variation", v)
+        variations = list(map(abs, variations))
+        m, M = min(variations), max(variations)
+        print("Largest abs variation [min]:", M)
+        print("Smallest abs variation [min]:", m)
+
+    # Next ToDo: Linearity of moonrise
 
 
 def play(options):
@@ -453,7 +492,7 @@ def play(options):
 
     This function exists solely for quick Python code prototyping and can thus change wildly.
     """
-    print(timescale.tt_jd(2110763).utc_jpl())
+    print(planets)
 
 
 def main(args):
@@ -510,6 +549,11 @@ def main(args):
     command_analyse_times.add_argument(
         "--day-linearity",
         help="Day length differences from linearity at midpoint",
+        action="store_true",
+    )
+    command_analyse_times.add_argument(
+        "--moonrise-variation",
+        help="Moonrise differences between north and Brasel",
         action="store_true",
     )
 
