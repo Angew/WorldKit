@@ -82,6 +82,8 @@ class Landmarks:
 
     north_tip = wgs84.latlon(60.165 * skyfield.api.N, 1.25 * skyfield.api.E)
 
+    north_of_Brasel = wgs84.latlon(north_tip.latitude.degrees, Brasel.longitude.degrees)
+
     @staticmethod
     def get_midpoint(a, b):
         return wgs84.latlon(
@@ -483,7 +485,24 @@ def analyse(options):
         print("Largest abs variation [min]:", M)
         print("Smallest abs variation [min]:", m)
 
-    # Next ToDo: Linearity of moonrise
+    # Difference between moonrise interpolation and computation
+    # Known data: difference is at most 1.3 min => linearity's fine
+    if options.moonrise_linearity:
+        print("Moonrise linearity")
+        print("==================")
+        rises = {}
+        for point in "north_of_Brasel", "Brasel":
+            rises[point] = Compute.moonrises(getattr(Landmarks, point))
+        computed = Compute.moonrises(Landmarks.get_midpoint(Landmarks.Brasel, Landmarks.north_of_Brasel))
+        def avg(a, b):
+            if a is None or b is None:
+                return None
+            return timescale.tt_jd((a.tt+b.tt)/2)
+        linear = [avg(a, b) for a, b in zip(*rises.values())]
+        diffs = [abs(c-l)*24*60 for c, l in zip(computed, linear) if c is not None and l is not None]
+        m, M = min(diffs), max(diffs)
+        print("Largest diff [min]:", M)
+        print("Smallest diff [min]:", m)
 
 
 def play(options):
@@ -554,6 +573,11 @@ def main(args):
     command_analyse.add_argument(
         "--moonrise-variation",
         help="Moonrise differences between north and Brasel",
+        action="store_true",
+    )
+    command_analyse.add_argument(
+        "--moonrise-linearity",
+        help="Moonrise differences from linearity at midpoint",
         action="store_true",
     )
 
