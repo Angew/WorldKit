@@ -273,7 +273,7 @@ class Diary:
         u = SvgUnits()
         # ToDo: svg pages
         # ToDo: enough pages for entire year
-        dwg = svgwrite.Drawing("diary.svg", (u.mm(297), u.mm(210)))
+        dwg = svgwrite.Drawing("generated-diary.svg", (u.mm(297), u.mm(210)))
         page_size = (100+self.ROW_HEIGHT, 7*self.ROW_HEIGHT)
         self.add_page(dwg, DiaryPage((15, 5), page_size))
         self.add_page(dwg, DiaryPage((297/2+15, 5), page_size))
