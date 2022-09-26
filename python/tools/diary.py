@@ -370,9 +370,9 @@ def generate_diary(options):
     Diary(options).generate()
 
 
-def analyse_times(options):
+def analyse(options):
     """
-    Display various analyses of event times (e.g. twilight)
+    Display various analyses (e.g. twilight times)
 
     Used to guide DM's decisions on which things must be present in the diary
     and which can be interpolated/eyeballed.
@@ -521,37 +521,37 @@ def main(args):
         default=".",
     )
 
-    command_analyse_times = subcommands.add_parser(
-        "analyse-times",
-        description="Different analyses of event times (e.g. twilight)",
+    command_analyse = subcommands.add_parser(
+        "analyse",
+        description="Different analyses (e.g. twilight time)",
     )
-    command_analyse_times.set_defaults(process=analyse_times)
-    command_analyse_times.add_argument(
+    command_analyse.set_defaults(process=analyse)
+    command_analyse.add_argument(
         "--twilight",
         help="Days when north tip has no full night",
         action="store_true",
     )
-    command_analyse_times.add_argument(
+    command_analyse.add_argument(
         "--twilight-brasel",
         help="Days when Brasel has no full night",
         action="store_true",
     )
-    command_analyse_times.add_argument(
+    command_analyse.add_argument(
         "--dawn",
         help="Days when north tip has full day",
         action="store_true",
     )
-    command_analyse_times.add_argument(
+    command_analyse.add_argument(
         "--day-variation",
         help="Day length differences between north and Brasel",
         action="store_true",
     )
-    command_analyse_times.add_argument(
+    command_analyse.add_argument(
         "--day-linearity",
         help="Day length differences from linearity at midpoint",
         action="store_true",
     )
-    command_analyse_times.add_argument(
+    command_analyse.add_argument(
         "--moonrise-variation",
         help="Moonrise differences between north and Brasel",
         action="store_true",
