@@ -469,12 +469,12 @@ def analyse(options):
         print("Smallest diff [h]:", m)
 
     # Variation in Moonrise time between Brasel and northtip
-    # Known result: 33min
+    # Known result: 29min
     if options.moonrise_variation:
         print("Moonrise variation")
         print("==================")
         rises = {}
-        for point in "north_tip", "Brasel":
+        for point in "north_of_Brasel", "Brasel":
             rises[point] = Compute.moonrises(getattr(Landmarks, point))
 
         variations = [(n - b)*24*60 for n, b in zip(*rises.values()) if n is not None and b is not None]
