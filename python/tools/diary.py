@@ -505,6 +505,20 @@ def analyse(options):
         print("Smallest diff [min]:", m)
 
 
+def preprocess(options):
+    if options.tide:
+        preprocess_tide(options)
+
+
+def preprocess_tide(options):
+    path, in_file_name = os.path.split(options.tide)
+    if not in_file_name:
+        raise ValueError("Tide file database specified incorrectly")
+    out_file_name = os.path.splitext(in_file_name)[0] + ".data.py"
+    # * accumulate maxima in streaming fashion
+    # * write them out
+
+
 def play(options):
     """
     Development command to test/run whatever I need in the script.
@@ -579,6 +593,17 @@ def main(args):
         "--moonrise-linearity",
         help="Moonrise differences from linearity at midpoint",
         action="store_true",
+    )
+
+    command_compute = subcommands.add_parser(
+        "preprocess",
+        description="Pre-compute some data",
+    )
+    command_compute.set_defaults(process=preprocess)
+    command_compute.add_argument(
+        "--tide",
+        help="Precompute tide from given database FILE",
+        metavar="FILE",
     )
 
     command_play = subcommands.add_parser(
