@@ -515,7 +515,35 @@ def preprocess_tide(options):
     if not in_file_name:
         raise ValueError("Tide file database specified incorrectly")
     out_file_name = os.path.splitext(in_file_name)[0] + ".data.py"
-    # * accumulate maxima in streaming fashion
+
+    high_tides = []
+    low_tides = []
+    TideDataTuple = namedtuple("time, level")
+
+    RawDataTuple = namedtuple("number, date, time, level, _residue")
+    def TideData(data):
+        date_string = f'{data.date.replace("/", "-")}.{data.time}'
+        return TimeDataTuple(datetime.fromisoformat(date_string), float(data.level))
+    last_data = None
+    rising = True
+    with open(options.tide) as in_file:
+        for raw_data in (RawDataTuple(line.split()) for line in in_file if line):
+            if not raw_data.number.endswith(")"):
+                continue
+            data = TideData(raw_data)
+            if not last_data:
+                last_data = data
+                continue
+            if data.level < last_data.level:
+                if rising:
+                    high_tides.append(last_data)
+                    rising = False
+            else if data.level > last_data.level:
+                if not rising:
+                    low_tides.append(last_data)
+                    rising = True
+            last_data = data
+
     # * write them out
 
 
