@@ -1,11 +1,13 @@
 import argparse
+from collections import namedtuple
+import datetime
 import enum
 import os
 import os.path
 import math
 import skyfield.almanac
 import skyfield.api
-from skyfield.api import wgs84
+from skyfield.api import utc, wgs84
 import svgwrite
 import sys
 
@@ -518,16 +520,20 @@ def preprocess_tide(options):
 
     high_tides = []
     low_tides = []
-    TideDataTuple = namedtuple("time, level")
+    TideDataTuple = namedtuple("TideDataTuple", "time, level")
 
-    RawDataTuple = namedtuple("number, date, time, level, _residue")
+    RawDataTuple = namedtuple("RawDataTuple", "number, date, time, level, residue_")
     def TideData(data):
-        date_string = f'{data.date.replace("/", "-")}.{data.time}'
-        return TimeDataTuple(datetime.fromisoformat(date_string), float(data.level))
+        date_string = f'{data.date.replace("/", "-")}.{data.time}+00:00'
+        return TideDataTuple(timescale.from_datetime(datetime.datetime.fromisoformat(date_string)).tt, float(data.level.strip("T")))
     last_data = None
     rising = True
     with open(options.tide) as in_file:
-        for raw_data in (RawDataTuple(line.split()) for line in in_file if line):
+        for line in filter(None, in_file):
+            try:
+                raw_data = RawDataTuple(*line.split())
+            except TypeError:
+                continue
             if not raw_data.number.endswith(")"):
                 continue
             data = TideData(raw_data)
@@ -538,13 +544,18 @@ def preprocess_tide(options):
                 if rising:
                     high_tides.append(last_data)
                     rising = False
-            else if data.level > last_data.level:
+            elif data.level > last_data.level:
                 if not rising:
                     low_tides.append(last_data)
                     rising = True
             last_data = data
 
-    # * write them out
+    with open(os.path.join(path, out_file_name), 'w') as out_file:
+        for tides in "high_tides", "low_tides":
+            out_file.write(f"{tides} = [\n")
+            tide_data = locals()[tides]
+            out_file.write("\n".join((f"    ({x.time}, {x.level})" for x in tide_data)))
+            out_file.write("\n]\n")
 
 
 def play(options):
