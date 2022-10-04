@@ -86,6 +86,8 @@ class Landmarks:
 
     north_of_Brasel = wgs84.latlon(north_tip.latitude.degrees, Brasel.longitude.degrees)
 
+    reference_Portsmouth = wgs84.latlon(50.80256 * skyfield.api.N, 1.11175 * skyfield.api.W)
+
     @staticmethod
     def get_midpoint(a, b):
         return wgs84.latlon(
@@ -506,6 +508,16 @@ def analyse(options):
         print("Largest diff [min]:", M)
         print("Smallest diff [min]:", m)
 
+    # Difference between tides computed using my formula and those from official database
+    if options.tide_accuracy:
+        print("Tide accuracy")
+        print("=============")
+
+        # * load preprocessed tides
+        # * compute high and low tides from reference_Portsmouth for hardcoded year using my formula
+        # * write differences to csv file (I want them analysable manually)
+        # * print summary: largest difference, smallest difference, mean difference
+
 
 def preprocess(options):
     if options.tide:
@@ -631,6 +643,11 @@ def main(args):
     command_analyse.add_argument(
         "--moonrise-linearity",
         help="Moonrise differences from linearity at midpoint",
+        action="store_true",
+    )
+    command_analyse.add_argument(
+        "--tide-accuracy",
+        help="Difference between tide formula and official tide data",
         action="store_true",
     )
 
