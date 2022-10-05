@@ -31,7 +31,8 @@ import sys
 # ascension 0h) is fixed in space, it doesn't rotate with the Earth.
 # So, IIUC, "form a line" means that the Observer's RA is the same as
 # the Moon's. And since it's all wibbly-wobbly anyway, that sounds good
-# enough for me.
+# enough for me. Note that Skyfield has some helpers like "which geo is below
+# a given RA", which might be just what I need.
 
 
 def adjacent_filter(it, pred):
@@ -513,7 +514,10 @@ def analyse(options):
         print("Tide accuracy")
         print("=============")
 
-        # * load preprocessed tides
+        with open("data/tide.data.py") as tide_file:
+            exec(tide_file.read())
+
+        year = 2020 # FuWo: compute from tide data
         # * compute high and low tides from reference_Portsmouth for hardcoded year using my formula
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
@@ -528,7 +532,7 @@ def preprocess_tide(options):
     path, in_file_name = os.path.split(options.tide)
     if not in_file_name:
         raise ValueError("Tide file database specified incorrectly")
-    out_file_name = os.path.splitext(in_file_name)[0] + ".data.py"
+    out_file_name = "tide.data.py"
 
     high_tides = []
     low_tides = []
@@ -564,7 +568,7 @@ def preprocess_tide(options):
 
     with open(os.path.join(path, out_file_name), 'w') as out_file:
         for tides in "high_tides", "low_tides":
-            out_file.write(f"{tides} = [\n")
+            out_file.write(f"measured_{tides} = [\n")
             tide_data = locals()[tides]
             out_file.write("\n".join((f"    ({x.time}, {x.level})" for x in tide_data)))
             out_file.write("\n]\n")
