@@ -81,6 +81,11 @@ planets = sf_load("de406.bsp")  # goes from -3000 to +3000
 
 # Data
 
+EPOCH_MIDNIGHT = 2110762.5 # Midnight on start of Solstice day
+
+MILES_PER_LAT = 69
+
+
 class Landmarks:
     Brasel = wgs84.latlon(55.6 * skyfield.api.N, 0)
 
@@ -98,8 +103,13 @@ class Landmarks:
             (a.longitude.degrees + b.longitude.degrees)/2
         )
 
+    @staticmethod
+    def lat_distance(a, b):
+        return abs(a.latitude.degrees - b.latitude.degrees) * MILES_PER_LAT
 
-EPOCH_MIDNIGHT = 2110762.5 # Midnight on start of Solstice day
+
+def epsilon_minutes(m):
+    return m/24/60
 
 
 class Season(enum.IntEnum):
@@ -133,7 +143,7 @@ class Compute:
             timescale.tt_jd(EPOCH_MIDNIGHT+day),
             timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
             goal_func,
-            epsilon=1/24/60 # 1 minute precision
+            epsilon=epsilon_minutes(1)
         )[0]
         return t[1] - t[0]
 
@@ -151,17 +161,40 @@ class Compute:
             timescale.tt_jd(EPOCH_MIDNIGHT+day),
             timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
             goal_func,
-            epsilon=1/24/60 # 1 minute precision
+            epsilon=epsilon_minutes(1)
         )):
             if up:
                 return t
         return None
 
-
     @classmethod
     def moonrises(cls, point, when=None):
         when = when or range(366)
         return [cls.moonrise(point, day) for day in when]
+
+    @classmethod
+    def north_dawn_distance(cls, day_start):
+        t0 = day_start
+        t1 = day_start + datetime.timedelta(days=1)
+        north = Landmarks.north_of_Brasel
+        south = Landmarks.Brasel
+        while True:
+            point = Landmarks.get_midpoint(north, south)
+            dist = Landmarks.lat_distance(north, south)
+            if dist < 1:
+                return round(Landmarks.lat_distance(Landmarks.Brasel, point))
+            goal_func = skyfield.almanac.dark_twilight_day(planets, point)
+            times, lights = skyfield.almanac.find_discrete(
+                t0,
+                t1,
+                goal_func,
+                epsilon=epsilon_minutes(1)
+            )
+            if lights[0] > Twilight.Nautical:
+                north = point
+            else:
+                south = point
+
 
 
 # Commands
@@ -264,6 +297,7 @@ class Diary:
     # Sunrise time: Brasel + northtip
     # Sunset time: Brasel + northtip
     # Dusk time: Brasel + northtip OR Brasel + miles to north dusk point
+    # Tide times
     # ...
     # Lunar eclipse, if any
     # Solar eclipse, if any
@@ -279,6 +313,7 @@ class Diary:
         }
 
     def generate(self):
+        self.compute_data()
         u = SvgUnits()
         # ToDo: svg pages
         # ToDo: enough pages for entire year
@@ -400,7 +435,7 @@ def analyse(options):
                 timescale.tt_jd(EPOCH_MIDNIGHT+day),
                 timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
                 goal_func,
-                epsilon=1/24/60 # 1 minute precision
+                epsilon=epsilon_minutes(1)
             )
 
             if not times:
@@ -420,7 +455,7 @@ def analyse(options):
                 timescale.tt_jd(EPOCH_MIDNIGHT+day),
                 timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
                 goal_func,
-                epsilon=1/24/60 # 1 minute precision
+                epsilon=epsilon_minutes(1)
             )
 
             if not times:
@@ -440,7 +475,7 @@ def analyse(options):
                 timescale.tt_jd(EPOCH_MIDNIGHT+day),
                 timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
                 goal_func,
-                epsilon=1/24/60 # 1 minute precision
+                epsilon=epsilon_minutes(1)
             )
 
             if not times:
@@ -526,7 +561,7 @@ def analyse(options):
         # * For a find_discrete, I can use sign of "observer.lat - Moon.lat_below" (mod. 180 somehow)
         #   * Better, there's find_minima, which should work even better for me
         # Let's try that
-        
+
         # The problem is that the Moon is big, and sf is giving me a range of angles for its RA
         # I want its *center*, doprcic!
         # Maybe something with a Star object? Or just take the middle lat? Or...? Grr!!!
@@ -547,7 +582,7 @@ def analyse(options):
             timescale.utc(year),
             timescale.utc(year+1),
             distance_from_high_tide,
-            epsilon=1/24/60 # 1 minute precision
+            epsilon=epsilon_minutes(1)
         )
         print("\n".join((t.utc_strftime("%m-%d %H:%M") for t in computed_high_tides[0])))
 
@@ -559,6 +594,8 @@ def analyse(options):
 def preprocess(options):
     if options.tide:
         preprocess_tide(options)
+    if options.diary:
+        preprocess_diary(options)
 
 
 def preprocess_tide(options):
@@ -605,6 +642,74 @@ def preprocess_tide(options):
             tide_data = locals()[tides]
             out_file.write(",\n".join((f"    ({x.time}, {x.level})" for x in tide_data)))
             out_file.write("\n]\n")
+
+
+class DayData:
+    """
+    All relevant diary data for one day
+    """
+    def __init__(self, jd_start):
+        self.t_start = timescale.tt_jd(jd_start)
+        self.t_end = timescale.tt_jd(jd_start+1)
+        for tip in "north", "south":
+            for event in "dawn", "sunrise", "sunset", "dusk":
+                setattr(self, f"{tip}_{event}", None)
+        self.north_dawn_distance = None
+
+
+def compute_diary_data(day_data):
+    # Regular Sun
+    points = {
+        "south": Landmarks.Brasel,
+        "north": Landmarks.north_of_Brasel
+    }
+    for tip, point in points.items():
+        goal_func = skyfield.almanac.dark_twilight_day(planets, point)
+        times, events = skyfield.almanac.find_discrete(
+            day_data[0].t_start,
+            day_data[-1].t_end,
+            goal_func,
+            epsilon=epsilon_minutes(1)
+        )
+        last_light = goal_func(day_data[0].t_start).item()
+        for time, light in zip(times, events):
+            day = day_data[int(time.tt - EPOCH_MIDNIGHT)]
+            if last_light < light:
+                if light == Twilight.Nautical:
+                    setattr(day, f"{tip}_dawn", time)
+                elif light == Twilight.Day:
+                    setattr(day, f"{tip}_sunrise", time)
+            else:
+                if light == Twilight.Civil:
+                    setattr(day, f"{tip}_sunset", time)
+                elif light == Twilight.Astronomical:
+                    setattr(day, f"{tip}_dusk", time)
+            last_light = light
+    # Northmost Sun
+    for day in day_data:
+        if day.north_dawn is None:
+            day.north_dawn_distance = Compute.north_dawn_distance(day.t_start)
+
+
+def preprocess_diary(options):
+    day_data = [DayData(EPOCH_MIDNIGHT+day) for day in range(366)]
+    compute_diary_data(day_data)
+    # Debug
+    with open(os.path.join(script_dir, "data", "diary.csv"), "w") as f:
+        f.write("Day,Dawn,Sunrise,Sunset,Dusk\n")
+        for day in day_data:
+            f.write(day.t_start.utc_strftime("%d.%b,"))
+            if day.north_dawn_distance is not None:
+                f.write(f"{day.north_dawn_distance} miles,")
+            else:
+                f.write(day.north_dawn.utc_strftime("%H:%M,"))
+            f.write(day.north_sunrise.utc_strftime("%H:%M,"))
+            f.write(day.north_sunset.utc_strftime("%H:%M,"))
+            if day.north_dusk is not None:
+                f.write(day.north_dusk.utc_strftime("%H:%M"))
+            else:
+                f.write("--")
+            f.write("\n")
 
 
 def play(options):
@@ -697,6 +802,11 @@ def main(args):
         "--tide",
         help="Precompute tide from given database FILE",
         metavar="FILE",
+    )
+    command_compute.add_argument(
+        "--diary",
+        help="Precompute master diary data",
+        action="store_true",
     )
 
     command_play = subcommands.add_parser(
