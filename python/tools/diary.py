@@ -8,6 +8,7 @@ import math
 import skyfield.almanac
 import skyfield.api
 from skyfield.api import utc, wgs84
+import skyfield.searchlib
 import svgwrite
 import sys
 
@@ -88,6 +89,7 @@ class Landmarks:
     north_of_Brasel = wgs84.latlon(north_tip.latitude.degrees, Brasel.longitude.degrees)
 
     reference_Portsmouth = wgs84.latlon(50.80256 * skyfield.api.N, 1.11175 * skyfield.api.W)
+    reference_antiPortsmouth = wgs84.latlon(50.80256 * skyfield.api.S, 181.11175 * skyfield.api.W)
 
     @staticmethod
     def get_midpoint(a, b):
@@ -518,6 +520,37 @@ def analyse(options):
             exec(tide_file.read())
 
         year = 2020 # FuWo: compute from tide data
+        # Tide computation algorithm (idea):
+        # * As MVP, ignore 50' difference
+        # * High tide happens when observer latitude is beneath Moon's RA
+        # * For a find_discrete, I can use sign of "observer.lat - Moon.lat_below" (mod. 180 somehow)
+        #   * Better, there's find_minima, which should work even better for me
+        # Let's try that
+        
+        # The problem is that the Moon is big, and sf is giving me a range of angles for its RA
+        # I want its *center*, doprcic!
+        # Maybe something with a Star object? Or just take the middle lat? Or...? Grr!!!
+        earth = planets["Earth"]
+        moon = planets["Moon"]
+        def distance_from_high_tide(time):
+            m = earth.at(time).observe(moon)
+            print(m.radec())
+            tide_lat = wgs84.subpoint_of(m)
+            print(tide_lat)
+            raise ArgumentError()
+            return min(
+                abs(tide_lat.degrees - Landmarks.reference_Portsmouth.latitude.degrees),
+                abs(tide_lat.degrees - Landmarks.reference_antiPortsmouth.latitude.degrees)
+            )
+        distance_from_high_tide.rough_period = 0.5
+        computed_high_tides = skyfield.searchlib.find_minima(
+            timescale.utc(year),
+            timescale.utc(year+1),
+            distance_from_high_tide,
+            epsilon=1/24/60 # 1 minute precision
+        )
+        print("\n".join((t.utc_strftime("%m-%d %H:%M") for t in computed_high_tides[0])))
+
         # * compute high and low tides from reference_Portsmouth for hardcoded year using my formula
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
@@ -570,7 +603,7 @@ def preprocess_tide(options):
         for tides in "high_tides", "low_tides":
             out_file.write(f"measured_{tides} = [\n")
             tide_data = locals()[tides]
-            out_file.write("\n".join((f"    ({x.time}, {x.level})" for x in tide_data)))
+            out_file.write(",\n".join((f"    ({x.time}, {x.level})" for x in tide_data)))
             out_file.write("\n]\n")
 
 
