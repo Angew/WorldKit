@@ -2,9 +2,10 @@ import argparse
 from collections import namedtuple
 import datetime
 import enum
+import math
+import numpy as np
 import os
 import os.path
-import math
 import skyfield.almanac
 import skyfield.api
 from skyfield.api import utc, wgs84
@@ -557,26 +558,23 @@ def analyse(options):
         year = 2020 # FuWo: compute from tide data
         # Tide computation algorithm (idea):
         # * As MVP, ignore 50' difference
-        # * High tide happens when observer latitude is beneath Moon's RA
-        # * For a find_discrete, I can use sign of "observer.lat - Moon.lat_below" (mod. 180 somehow)
+        # * High tide happens when observer longitude is beneath Moon's RA
+        # * For a find_discrete, I can use sign of "observer.lon - Moon.lon_below" (mod. 180 somehow)
         #   * Better, there's find_minima, which should work even better for me
         # Let's try that
 
-        # The problem is that the Moon is big, and sf is giving me a range of angles for its RA
-        # I want its *center*, doprcic!
-        # Maybe something with a Star object? Or just take the middle lat? Or...? Grr!!!
+        # The problem is that sf is calling my function with an array of times,
+        # so I must use NumPy stuff to get the correct result
         earth = planets["Earth"]
         moon = planets["Moon"]
         def distance_from_high_tide(time):
             m = earth.at(time).observe(moon)
-            print(m.radec())
-            tide_lat = wgs84.subpoint_of(m)
-            print(tide_lat)
-            raise ArgumentError()
-            return min(
-                abs(tide_lat.degrees - Landmarks.reference_Portsmouth.latitude.degrees),
-                abs(tide_lat.degrees - Landmarks.reference_antiPortsmouth.latitude.degrees)
-            )
+            tide_lon = wgs84.latlon_of(m)[1]
+            dist = np.vstack([
+                abs(tide_lon.degrees - Landmarks.reference_Portsmouth.longitude.degrees),
+                abs(tide_lon.degrees - Landmarks.reference_antiPortsmouth.longitude.degrees)
+            ])
+            return dist.min(axis=0)
         distance_from_high_tide.rough_period = 0.5
         computed_high_tides = skyfield.searchlib.find_minima(
             timescale.utc(year),
@@ -751,7 +749,9 @@ def play(options):
 
     This function exists solely for quick Python code prototyping and can thus change wildly.
     """
-    t = timescale.tt_jd(EPOCH_MIDNIGHT)
+    t = timescale.utc(2020)
+    print(t)
+    print(t.tt)
 
 
 def main(args):
