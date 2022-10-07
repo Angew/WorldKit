@@ -712,13 +712,46 @@ def preprocess_diary(options):
             f.write("\n")
 
 
+def verify(options):
+    out_dir = os.path.join(script_dir, "verify")
+    os.makedirs(out_dir, exist_ok=True)
+    t_start = timescale.tt_jd(EPOCH_MIDNIGHT)
+    if options.sun:
+        def write_sun_data(file_name, events, initial_value):
+            with open(os.path.join(out_dir, file_name), "w") as file:
+                file.write(f"Initial value:,{Twilight(initial_value).name}")
+                last_day = -1
+                for time, light in zip(*events):
+                    day = time.tt_calendar()[2]
+                    if day != last_day:
+                        file.write(f"\n{time.tt_strftime('%d.%b')}")
+                        last_day = day
+                    file.write(f",{Twilight(light).name},{time.tt_strftime('%H:%M')}")
+                file.write("\n")
+        # North Sun data
+        goal_func = skyfield.almanac.dark_twilight_day(planets, Landmarks.north_of_Brasel)
+        coarse_events = skyfield.searchlib.find_discrete(
+            t_start,
+            timescale.tt_jd(t_start.tt+366),
+            goal_func,
+            epsilon=epsilon_minutes(1)
+        )
+        write_sun_data("north-sun.coarse.csv", coarse_events, goal_func(t_start))
+        fine_events = skyfield.searchlib.find_discrete(
+            t_start,
+            timescale.tt_jd(t_start.tt+366),
+            goal_func
+        )
+        write_sun_data("north-sun.fine.csv", fine_events, goal_func(t_start))
+
+
 def play(options):
     """
     Development command to test/run whatever I need in the script.
 
     This function exists solely for quick Python code prototyping and can thus change wildly.
     """
-    print(planets)
+    t = timescale.tt_jd(EPOCH_MIDNIGHT)
 
 
 def main(args):
@@ -806,6 +839,17 @@ def main(args):
     command_compute.add_argument(
         "--diary",
         help="Precompute master diary data",
+        action="store_true",
+    )
+
+    command_verify = subcommands.add_parser(
+        "verify",
+        description="Verify diary data",
+    )
+    command_verify.set_defaults(process=verify)
+    command_verify.add_argument(
+        "--sun",
+        help="Dawn, sunrise, sunset, dusk times (or miles)",
         action="store_true",
     )
 
