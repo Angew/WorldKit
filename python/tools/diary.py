@@ -562,9 +562,6 @@ def analyse(options):
         # * For a find_discrete, I can use sign of "observer.lon - Moon.lon_below" (mod. 180 somehow)
         #   * Better, there's find_minima, which should work even better for me
         # Let's try that
-
-        # The problem is that sf is calling my function with an array of times,
-        # so I must use NumPy stuff to get the correct result
         earth = planets["Earth"]
         moon = planets["Moon"]
         def distance_from_high_tide(time):
@@ -582,9 +579,6 @@ def analyse(options):
             distance_from_high_tide,
             epsilon=epsilon_minutes(1)
         )
-        print("\n".join((t.utc_strftime("%m-%d %H:%M") for t in computed_high_tides[0])))
-
-        # * compute high and low tides from reference_Portsmouth for hardcoded year using my formula
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
 
