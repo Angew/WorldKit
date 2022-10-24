@@ -3,6 +3,8 @@ from collections import namedtuple
 import datetime
 import enum
 import math
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 import os.path
@@ -552,8 +554,10 @@ def analyse(options):
         print("Tide accuracy")
         print("=============")
 
+        tide_data = {}
         with open("data/tide.data.py") as tide_file:
-            exec(tide_file.read())
+            exec(tide_file.read(), {}, tide_data)
+        measured_high_tides = tide_data["measured_high_tides"]
 
         year = 2020 # FuWo: compute from tide data
         # Tide computation algorithm (idea):
@@ -579,6 +583,15 @@ def analyse(options):
             distance_from_high_tide,
             epsilon=epsilon_minutes(1)
         )
+        fig, ax = plt.subplots()
+        measured = [t[0] for t in measured_high_tides[:30]]
+        computed = [t.tt for t in computed_high_tides[0][:30]]
+        ax.plot(measured, np.ones(len(measured)), "bs", label="Measured")
+        ax.plot(computed, [0.8]*len(computed), "gs", label="Computed")
+        ax.legend()
+        ax.grid(True)
+        fig.savefig("analyse/high-tides.png")
+        # * plot both measured and computed data
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
 
