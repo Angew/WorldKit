@@ -199,6 +199,16 @@ class Compute:
                 south = point
 
 
+# Utilities
+
+MeasuredTides = namedtuple("MeasuredTides", "high_tides, low_tides")
+
+def load_tides():
+    tide_data = {}
+    with open("data/tide.data.py") as tide_file:
+        exec(tide_file.read(), {}, tide_data)
+    return MeasuredTides(tide_data["measured_high_tides"], tide_data["measured_low_tides"])
+
 
 # Commands
 
@@ -554,10 +564,8 @@ def analyse(options):
         print("Tide accuracy")
         print("=============")
 
-        tide_data = {}
-        with open("data/tide.data.py") as tide_file:
-            exec(tide_file.read(), {}, tide_data)
-        measured_high_tides = tide_data["measured_high_tides"]
+        measured = load_tides()
+        measured_high_tides = measured.high_tides
 
         year = 2020 # FuWo: compute from tide data
         # Tide computation algorithm (idea):
@@ -583,14 +591,16 @@ def analyse(options):
             distance_from_high_tide,
             epsilon=epsilon_minutes(1)
         )
+        prefix = 100
         fig, ax = plt.subplots()
-        measured = [t[0] for t in measured_high_tides[:30]]
-        computed = [t.tt for t in computed_high_tides[0][:30]]
-        ax.plot(measured, np.ones(len(measured)), "bs", label="Measured")
-        ax.plot(computed, [0.8]*len(computed), "gs", label="Computed")
+        measured = [t[0] for t in measured_high_tides[:prefix]]
+        computed = [t.tt for t in computed_high_tides[0][:prefix]]
+        difference = [(m - c)*24*60 for m, c in zip(measured, computed)]
+        ax.plot(difference, "bs", label="Difference [min]")
         ax.legend()
         ax.grid(True)
-        fig.savefig("analyse/high-tides.png")
+        fig.set_figwidth(50)
+        fig.savefig("analyse/high-tides-diffs.png")
         # * plot both measured and computed data
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
@@ -604,6 +614,11 @@ def preprocess(options):
 
 
 def preprocess_tide(options):
+    # Note: the problem is that there's an occasional false uptick in data (downticks probably too).
+    # See e.g. 1212) 2020/01/13 14:45:00
+    # I will have to make this preprocessing more robust. Options:
+    # * Enforce a minimum time distance between high & low tide
+    # * Enforce a minimum length of an up/down run
     path, in_file_name = os.path.split(options.tide)
     if not in_file_name:
         raise ValueError("Tide file database specified incorrectly")
@@ -720,8 +735,10 @@ def preprocess_diary(options):
 def verify(options):
     out_dir = os.path.join(script_dir, "verify")
     os.makedirs(out_dir, exist_ok=True)
-    t_start = timescale.tt_jd(EPOCH_MIDNIGHT)
+
+    # Computed sun event data
     if options.sun:
+        t_start = timescale.tt_jd(EPOCH_MIDNIGHT)
         def write_sun_data(file_name, events, initial_value):
             with open(os.path.join(out_dir, file_name), "w") as file:
                 file.write(f"Initial value:,{Twilight(initial_value).name}")
@@ -748,6 +765,18 @@ def verify(options):
             goal_func
         )
         write_sun_data("north-sun.fine.csv", fine_events, goal_func(t_start))
+
+    # Measured tide data differences
+    if options.measured_tide:
+        data = [d[0] for d in load_tides().high_tides]
+        diffs = [(t[1] - t[0])*24*60 for t in lookahead(data)]
+        fig, ax = plt.subplots()
+        #d-data[0] for d in data[1:]]
+        ax.plot(diffs, label="Difference [min]")
+        ax.legend()
+        ax.grid(True)
+        fig.set_figwidth(50)
+        fig.savefig(os.path.join(out_dir, "measured-tide-diff.high.png"))
 
 
 def play(options):
@@ -857,6 +886,11 @@ def main(args):
     command_verify.add_argument(
         "--sun",
         help="Dawn, sunrise, sunset, dusk times (or miles)",
+        action="store_true",
+    )
+    command_verify.add_argument(
+        "--measured-tide",
+        help="Differences between measured tide points",
         action="store_true",
     )
 
