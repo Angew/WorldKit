@@ -619,6 +619,8 @@ def preprocess_tide(options):
     # I will have to make this preprocessing more robust. Options:
     # * Enforce a minimum time distance between high & low tide
     # * Enforce a minimum length of an up/down run
+    # What I will actually try first: find all extrema like before, but then enforce them being
+    # actual extrema within a range around (let's say 2 hours each way).
     path, in_file_name = os.path.split(options.tide)
     if not in_file_name:
         raise ValueError("Tide file database specified incorrectly")
