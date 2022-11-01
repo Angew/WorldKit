@@ -566,6 +566,7 @@ def analyse(options):
 
         measured = load_tides()
         measured_high_tides = measured.high_tides
+        measured_low_tides = measured.low_tides
 
         year = 2020 # FuWo: compute from tide data
         # Tide computation algorithm (idea):
@@ -591,16 +592,26 @@ def analyse(options):
             distance_from_high_tide,
             epsilon=epsilon_minutes(1)
         )
-        prefix = 100
+        computed_low_tides = skyfield.searchlib.find_maxima(
+            timescale.utc(year),
+            timescale.utc(year+1),
+            distance_from_high_tide,
+            epsilon=epsilon_minutes(1)
+        )
+        prefix = None
+        difference = {}
+        for event in "high", "low":
+            measured = [t[0] for t in locals()[f"measured_{event}_tides"][:prefix]]
+            computed = [t.tt for t in locals()[f"computed_{event}_tides"][0][:prefix]]
+            difference[event] = [(m - c)*24*60 for m, c in zip(measured, computed)]
         fig, ax = plt.subplots()
-        measured = [t[0] for t in measured_high_tides[:prefix]]
-        computed = [t.tt for t in computed_high_tides[0][:prefix]]
-        difference = [(m - c)*24*60 for m, c in zip(measured, computed)]
-        ax.plot(difference, "bs", label="Difference [min]")
+        ax.plot(difference["high"], "bs", label="High tide difference [min]")
+        ax.plot(np.arange(0, len(difference["low"]), 2), difference["low"][::2], "rs", label="Low tide difference, even [min]")
+        ax.plot(np.arange(1, len(difference["low"]), 2), difference["low"][1::2], "r^", label="Low tide difference, odd [min]")
         ax.legend()
         ax.grid(True)
         fig.set_figwidth(50)
-        fig.savefig("analyse/high-tides-diffs.png")
+        fig.savefig("analyse/tides-diffs.png")
         # * plot both measured and computed data
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
