@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import os.path
+import scipy as sp
 import skyfield.almanac
 import skyfield.api
 from skyfield.api import utc, wgs84
@@ -86,6 +87,8 @@ planets = sf_load("de406.bsp")  # goes from -3000 to +3000
 
 EPOCH_MIDNIGHT = 2110762.5 # Midnight on start of Solstice day
 
+TIDE_DATA_YEAR = 2020 # FuWo: compute from data
+
 MILES_PER_LAT = 69
 
 
@@ -139,6 +142,9 @@ class Twilight(enum.IntEnum):
 # Computations
 
 class Compute:
+    earth = planets["Earth"]
+    moon = planets["Moon"]
+
     @classmethod
     def day_length(cls, point, day):
         goal_func = skyfield.almanac.sunrise_sunset(planets, point)
@@ -157,9 +163,8 @@ class Compute:
 
     @classmethod
     def moonrise(cls, point, day):
-        moon = planets["Moon"]
         goal_func = skyfield.almanac.risings_and_settings(
-            planets, moon, point, radius_degrees=0.25)
+            planets, cls.moon, point, radius_degrees=0.25)
         for t, up in zip(*skyfield.almanac.find_discrete(
             timescale.tt_jd(EPOCH_MIDNIGHT+day),
             timescale.tt_jd(EPOCH_MIDNIGHT+day+1),
@@ -197,6 +202,17 @@ class Compute:
                 north = point
             else:
                 south = point
+
+    @staticmethod
+    def distance_from_high_tide_raw(time):
+        m = Compute.earth.at(time).observe(Compute.moon)
+        tide_lon = wgs84.latlon_of(m)[1]
+        dist = np.vstack([
+            abs(tide_lon.degrees - Landmarks.reference_Portsmouth.longitude.degrees),
+            abs(tide_lon.degrees - Landmarks.reference_antiPortsmouth.longitude.degrees)
+        ])
+        return dist.min(axis=0)
+Compute.distance_from_high_tide_raw.rough_period = 0.5
 
 
 # Utilities
@@ -568,34 +584,34 @@ def analyse(options):
         measured_high_tides = measured.high_tides
         measured_low_tides = measured.low_tides
 
-        year = 2020 # FuWo: compute from tide data
+        year = TIDE_DATA_YEAR
         # Tide computation algorithm (idea):
         # * As MVP, ignore 50' difference
         # * High tide happens when observer longitude is beneath Moon's RA
         # * For a find_discrete, I can use sign of "observer.lon - Moon.lon_below" (mod. 180 somehow)
         #   * Better, there's find_minima, which should work even better for me
         # Let's try that
-        earth = planets["Earth"]
-        moon = planets["Moon"]
-        def distance_from_high_tide(time):
-            m = earth.at(time).observe(moon)
-            tide_lon = wgs84.latlon_of(m)[1]
-            dist = np.vstack([
-                abs(tide_lon.degrees - Landmarks.reference_Portsmouth.longitude.degrees),
-                abs(tide_lon.degrees - Landmarks.reference_antiPortsmouth.longitude.degrees)
-            ])
-            return dist.min(axis=0)
-        distance_from_high_tide.rough_period = 0.5
+        # earth = planets["Earth"]
+        # moon = planets["Moon"]
+        # def distance_from_high_tide(time):
+            # m = earth.at(time).observe(moon)
+            # tide_lon = wgs84.latlon_of(m)[1]
+            # dist = np.vstack([
+                # abs(tide_lon.degrees - Landmarks.reference_Portsmouth.longitude.degrees),
+                # abs(tide_lon.degrees - Landmarks.reference_antiPortsmouth.longitude.degrees)
+            # ])
+            # return dist.min(axis=0)
+        # distance_from_high_tide.rough_period = 0.5
         computed_high_tides = skyfield.searchlib.find_minima(
             timescale.utc(year),
             timescale.utc(year+1),
-            distance_from_high_tide,
+            Compute.distance_from_high_tide_raw,
             epsilon=epsilon_minutes(1)
         )
         computed_low_tides = skyfield.searchlib.find_maxima(
             timescale.utc(year),
             timescale.utc(year+1),
-            distance_from_high_tide,
+            Compute.distance_from_high_tide_raw,
             epsilon=epsilon_minutes(1)
         )
         prefix = None
@@ -615,6 +631,43 @@ def analyse(options):
         # * plot both measured and computed data
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
+
+    # Fit a function to the offsets between raw tide formula and measured data
+    if options.tide_offsets:
+        print("Tide offsets")
+        print("============")
+        computed_high_tides = skyfield.searchlib.find_minima(
+            timescale.utc(TIDE_DATA_YEAR),
+            timescale.utc(TIDE_DATA_YEAR+1),
+            Compute.distance_from_high_tide_raw,
+            epsilon=epsilon_minutes(1)
+        )[0]
+        computed_high_tides = np.array([t.tt for t in computed_high_tides])
+        measured = load_tides()
+        measured_high_tides = np.array([t[0] for t in measured.high_tides])
+        difference = measured_high_tides - computed_high_tides
+        # Note that t is serial number of tide here, while I need time as input for the actual function :-(
+        def offset_func(p, t):
+            return p[0] * np.sin(p[1]*t + p[2]) + p[3]
+        def goal_func(p, t, d):
+            return offset_func(p, t) - d
+        def jac(p, t, d):
+            J = np.empty((t.size, p.size))
+            J[:, 0] = np.sin(p[1]*t + p[2])
+            J[:, 1] = (p[0] * np.cos(p[1]*t + p[2])) * t
+            J[:, 2] = p[0] * np.cos(p[1]*t + p[2])
+            J[:, 3] = 1
+            return J
+        res = sp.optimize.least_squares(goal_func, np.ones(4), args=(np.arange(difference.size), difference), verbose=1)
+        offset_params = res.x
+        print("Offset_params:", offset_params)
+        # wip
+        # Assemble residual functions (one for each data point)
+        ## Compute difference between computed_high_tide and measured_high_tide (vector)
+        ## Residue function (t) = p1*sin(p2*t+p3)+p4 - diff[t]
+        # Assemble Jacobian matrix
+        # Output discovered parameters
+        # Output difference figure of "computed_with_offset - measured"
 
 
 def preprocess(options):
@@ -904,7 +957,12 @@ def main(args):
     )
     command_analyse.add_argument(
         "--tide-accuracy",
-        help="Difference between tide formula and official tide data",
+        help="Difference between raw (non-offset) tide formula and official tide data",
+        action="store_true",
+    )
+    command_analyse.add_argument(
+        "--tide-offsets",
+        help="Fitting function to approximate official tide data in formula",
         action="store_true",
     )
 
