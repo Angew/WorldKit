@@ -215,6 +215,83 @@ class Compute:
 Compute.distance_from_high_tide_raw.rough_period = 0.5
 
 
+class TideSystem:
+    data_file_path = os.path.join(script_dir, "data", "tide.data.py")
+
+    def load_measured_data(self, file_path):
+        high_tide_idxs = []
+        low_tide_idxs = []
+        tide_data = []
+        MeasurementTuple = namedtuple("MeasurementTuple", "time, level")
+
+        # Read raw data into MeasurementTuple list
+        RawDataTuple = namedtuple("RawDataTuple", "number, date, time, level, residue_")
+        def Measurement(data):
+            date_string = f'{data.date.replace("/", "-")}.{data.time}+00:00'
+            return MeasurementTuple(timescale.from_datetime(datetime.datetime.fromisoformat(date_string)).tt, float(data.level.strip("T")))
+        last_measurement = None
+        rising = True
+        with open(options.tide) as in_file:
+            for line in filter(None, in_file):
+                try:
+                    raw_data = RawDataTuple(*line.split())
+                except TypeError:
+                    continue
+                if not raw_data.number.endswith(")"):
+                    continue
+                measurement = Measurement(raw_data)
+                tide_data.append(measurement)
+                if not last_measurement:
+                    last_measurement = measurement
+                    continue
+                if measurement.level < last_measurement.level:
+                    if rising:
+                        high_tide_idxs.append(len(tide_data) - 2)
+                        rising = False
+                elif measurement.level > last_measurement.level:
+                    if not rising:
+                        low_tide_idxs.append(len(tide_data) - 2)
+                        rising = True
+                last_measurement = measurement
+
+        # Remove false extrema
+        def remove_false_extrema(extrema_idxs, left_is_extremer, window_reach=8):
+            try:
+                idx_idx_ex = 0
+                # No for loop, since extrema_idxs is modified inside
+                # Reaching beyon the end of extrema_idxs is used as stop condition
+                while True:
+                    idx_ex = extrema_idxs[idx_idx_ex]
+                    is_extremum = True
+                    ex_level = tide_data[idx_ex].level
+                    test_range = (
+                        list(range(max(idx_ex - window_reach, 0), idx_ex)) +
+                        list(range(idx_ex + 1, min(idx_ex + window_reach + 1, len(tide_data))))
+                    )
+                    ex_value_idxs = [idx_ex]
+                    for idx_test in test_range:
+                        test_level = tide_data[idx_test].level
+                        if left_is_extremer(test_level, ex_level):
+                            is_extremum = False
+                            break
+                        elif test_level == ex_level:
+                            ex_value_idxs.append(idx_test)
+                    if is_extremum:
+                        if ex_value_idxs[-1] - ex_value_idxs[0] > len(ex_value_idxs)-1:
+                            raise ValueError(f"Ambiguous extremum at data nrs: {(i+1 for i in ex_value_idxs)}")
+                        next_valid = idx_ex + window_reach + 1
+                        idx_idx_ex += 1
+                        while extrema_idxs[idx_idx_ex] < next_valid:
+                            del extrema_idxs[idx_idx_ex]
+                    else:
+                        del extrema_idxs[idx_idx_ex]
+            except IndexError:
+                pass
+        remove_false_extrema(high_tide_idxs, lambda l, r: l > r)
+        remove_false_extrema(low_tide_idxs, lambda l, r: l < r)
+        
+
+
 # Utilities
 
 MeasuredTides = namedtuple("MeasuredTides", "high_tides, low_tides")
@@ -678,81 +755,9 @@ def preprocess(options):
 
 
 def preprocess_tide(options):
-    path, in_file_name = os.path.split(options.tide)
-    if not in_file_name:
-        raise ValueError("Tide file database specified incorrectly")
-    out_file_name = "tide.data.py"
-
-    high_tide_idxs = []
-    low_tide_idxs = []
-    tide_data = []
-    MeasurementTuple = namedtuple("MeasurementTuple", "time, level")
-
-    # Read raw data into MeasurementTuple list
-    RawDataTuple = namedtuple("RawDataTuple", "number, date, time, level, residue_")
-    def Measurement(data):
-        date_string = f'{data.date.replace("/", "-")}.{data.time}+00:00'
-        return MeasurementTuple(timescale.from_datetime(datetime.datetime.fromisoformat(date_string)).tt, float(data.level.strip("T")))
-    last_measurement = None
-    rising = True
-    with open(options.tide) as in_file:
-        for line in filter(None, in_file):
-            try:
-                raw_data = RawDataTuple(*line.split())
-            except TypeError:
-                continue
-            if not raw_data.number.endswith(")"):
-                continue
-            measurement = Measurement(raw_data)
-            tide_data.append(measurement)
-            if not last_measurement:
-                last_measurement = measurement
-                continue
-            if measurement.level < last_measurement.level:
-                if rising:
-                    high_tide_idxs.append(len(tide_data) - 2)
-                    rising = False
-            elif measurement.level > last_measurement.level:
-                if not rising:
-                    low_tide_idxs.append(len(tide_data) - 2)
-                    rising = True
-            last_measurement = measurement
-
-    # Remove false extrema
-    def remove_false_extrema(extrema_idxs, left_is_extremer, window_reach=8):
-        try:
-            idx_idx_ex = 0
-            # No for loop, since extrema_idxs is modified inside
-            # Reaching beyon the end of extrema_idxs is used as stop condition
-            while True:
-                idx_ex = extrema_idxs[idx_idx_ex]
-                is_extremum = True
-                ex_level = tide_data[idx_ex].level
-                test_range = (
-                    list(range(max(idx_ex - window_reach, 0), idx_ex)) +
-                    list(range(idx_ex + 1, min(idx_ex + window_reach + 1, len(tide_data))))
-                )
-                ex_value_idxs = [idx_ex]
-                for idx_test in test_range:
-                    test_level = tide_data[idx_test].level
-                    if left_is_extremer(test_level, ex_level):
-                        is_extremum = False
-                        break
-                    elif test_level == ex_level:
-                        ex_value_idxs.append(idx_test)
-                if is_extremum:
-                    if ex_value_idxs[-1] - ex_value_idxs[0] > len(ex_value_idxs)-1:
-                        raise ValueError(f"Ambiguous extremum at data nrs: {(i+1 for i in ex_value_idxs)}")
-                    next_valid = idx_ex + window_reach + 1
-                    idx_idx_ex += 1
-                    while extrema_idxs[idx_idx_ex] < next_valid:
-                        del extrema_idxs[idx_idx_ex]
-                else:
-                    del extrema_idxs[idx_idx_ex]
-        except IndexError:
-            pass
-    remove_false_extrema(high_tide_idxs, lambda l, r: l > r)
-    remove_false_extrema(low_tide_idxs, lambda l, r: l < r)
+    tides = TideSystem()
+    tides.load_measured_data(options.tide)
+    tides.save_preprocessed_data()
 
     # Write out preprocessed data
     with open(os.path.join(path, out_file_name), 'w') as out_file:
