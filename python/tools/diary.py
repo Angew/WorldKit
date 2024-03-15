@@ -216,12 +216,29 @@ Compute.distance_from_high_tide_raw.rough_period = 0.5
 
 
 class TideSystem:
+    """
+    Class encapsulating tide data preprocessing.
+
+    Future: I probably intended to move some other tide accesses/computations
+    here.
+    """
     data_file_path = os.path.join(script_dir, "data", "tide.data.py")
 
-    def load_measured_data(self, file_path):
-        high_tide_idxs = []
-        low_tide_idxs = []
-        tide_data = []
+    def __init__(self):
+        self.high_tide_idxs = []
+        self.low_tide_idxs = []
+        self.tide_data = []
+
+    def load_measured_data(self, measurement_file_path):
+        """
+        Loads measured data from file and computes tide indexes.
+
+        Loads measurements from `measurement_file_path` and uses them to
+        compute tide data as well as high and low tide indices.
+        """
+        self.high_tide_idxs = []
+        self.low_tide_idxs = []
+        self.tide_data = []
         MeasurementTuple = namedtuple("MeasurementTuple", "time, level")
 
         # Read raw data into MeasurementTuple list
@@ -231,7 +248,7 @@ class TideSystem:
             return MeasurementTuple(timescale.from_datetime(datetime.datetime.fromisoformat(date_string)).tt, float(data.level.strip("T")))
         last_measurement = None
         rising = True
-        with open(options.tide) as in_file:
+        with open(measurement_file_path) as in_file:
             for line in filter(None, in_file):
                 try:
                     raw_data = RawDataTuple(*line.split())
@@ -240,17 +257,17 @@ class TideSystem:
                 if not raw_data.number.endswith(")"):
                     continue
                 measurement = Measurement(raw_data)
-                tide_data.append(measurement)
+                self.tide_data.append(measurement)
                 if not last_measurement:
                     last_measurement = measurement
                     continue
                 if measurement.level < last_measurement.level:
                     if rising:
-                        high_tide_idxs.append(len(tide_data) - 2)
+                        self.high_tide_idxs.append(len(self.tide_data) - 2)
                         rising = False
                 elif measurement.level > last_measurement.level:
                     if not rising:
-                        low_tide_idxs.append(len(tide_data) - 2)
+                        self.low_tide_idxs.append(len(self.tide_data) - 2)
                         rising = True
                 last_measurement = measurement
 
@@ -259,18 +276,18 @@ class TideSystem:
             try:
                 idx_idx_ex = 0
                 # No for loop, since extrema_idxs is modified inside
-                # Reaching beyon the end of extrema_idxs is used as stop condition
+                # Reaching beyond the end of extrema_idxs is used as stop condition
                 while True:
                     idx_ex = extrema_idxs[idx_idx_ex]
                     is_extremum = True
-                    ex_level = tide_data[idx_ex].level
+                    ex_level = self.tide_data[idx_ex].level
                     test_range = (
                         list(range(max(idx_ex - window_reach, 0), idx_ex)) +
-                        list(range(idx_ex + 1, min(idx_ex + window_reach + 1, len(tide_data))))
+                        list(range(idx_ex + 1, min(idx_ex + window_reach + 1, len(self.tide_data))))
                     )
                     ex_value_idxs = [idx_ex]
                     for idx_test in test_range:
-                        test_level = tide_data[idx_test].level
+                        test_level = self.tide_data[idx_test].level
                         if left_is_extremer(test_level, ex_level):
                             is_extremum = False
                             break
@@ -287,9 +304,20 @@ class TideSystem:
                         del extrema_idxs[idx_idx_ex]
             except IndexError:
                 pass
-        remove_false_extrema(high_tide_idxs, lambda l, r: l > r)
-        remove_false_extrema(low_tide_idxs, lambda l, r: l < r)
-        
+        remove_false_extrema(self.high_tide_idxs, lambda l, r: l > r)
+        remove_false_extrema(self.low_tide_idxs, lambda l, r: l < r)
+
+    def save_preprocessed_data(self):
+        """
+        Saves high tide and low tide data (times & heights) into the data file.
+        """
+        with open(self.data_file_path, 'w') as out_file:
+            for tides in "high_tide", "low_tide":
+                out_file.write(f"measured_{tides}s = [\n")
+                data = (self.tide_data[i] for i in getattr(self, tides+"_idxs"))
+                out_file.write(",\n".join((f"    ({x.time}, {x.level})" for x in data)))
+                out_file.write("\n]\n")
+
 
 
 # Utilities
@@ -758,14 +786,6 @@ def preprocess_tide(options):
     tides = TideSystem()
     tides.load_measured_data(options.tide)
     tides.save_preprocessed_data()
-
-    # Write out preprocessed data
-    with open(os.path.join(path, out_file_name), 'w') as out_file:
-        for tides in "high_tide", "low_tide":
-            out_file.write(f"measured_{tides}s = [\n")
-            data = (tide_data[i] for i in locals()[tides+"_idxs"])
-            out_file.write(",\n".join((f"    ({x.time}, {x.level})" for x in data)))
-            out_file.write("\n]\n")
 
 
 class DayData:
