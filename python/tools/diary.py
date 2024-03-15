@@ -322,13 +322,18 @@ class TideSystem:
 
 # Utilities
 
+MeasuredTideExtremum = namedtuple("MeasuredTideExtremum", "time, height")
+
 MeasuredTides = namedtuple("MeasuredTides", "high_tides, low_tides")
 
 def load_tides():
     tide_data = {}
     with open("data/tide.data.py") as tide_file:
         exec(tide_file.read(), {}, tide_data)
-    return MeasuredTides(tide_data["measured_high_tides"], tide_data["measured_low_tides"])
+    return MeasuredTides(
+        [MeasuredTideExtremum(*d) for d in tide_data["measured_high_tides"]],
+        [MeasuredTideExtremum(*d) for d in tide_data["measured_low_tides"]]
+    )
 
 
 # Commands
@@ -890,9 +895,9 @@ def verify(options):
         )
         write_sun_data("north-sun.fine.csv", fine_events, goal_func(t_start))
 
-    # Measured tide data differences
+    # Time intervals between high tides in measured data
     if options.measured_tide:
-        data = [d[0] for d in load_tides().high_tides]
+        data = [d.time for d in load_tides().high_tides]
         diffs = [(t[1] - t[0])*24*60 for t in lookahead(data)]
         fig, ax = plt.subplots()
         #d-data[0] for d in data[1:]]
@@ -1019,7 +1024,7 @@ def main(args):
     )
     command_verify.add_argument(
         "--measured-tide",
-        help="Differences between measured tide points",
+        help="Time distance between measured tide points",
         action="store_true",
     )
 
