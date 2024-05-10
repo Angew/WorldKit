@@ -205,6 +205,15 @@ class Compute:
 
     @staticmethod
     def distance_from_high_tide_raw(time):
+        """
+        Longitude degrees between reference point (Portsmouth) and high tide.
+
+        Returns non-negative difference [in degrees of longitude] between
+        point beneath the Moon (which stands for the high tide point), and the
+        closer of Portsmouth and its antipode. That is the same as difference
+        between Portsmouth and the closer high tide point (which is either the
+        point beneath the Moon, or that point's antipode).
+        """
         m = Compute.earth.at(time).observe(Compute.moon)
         tide_lon = wgs84.latlon_of(m)[1]
         dist = np.vstack([
@@ -700,18 +709,7 @@ def analyse(options):
         # * High tide happens when observer longitude is beneath Moon's RA
         # * For a find_discrete, I can use sign of "observer.lon - Moon.lon_below" (mod. 180 somehow)
         #   * Better, there's find_minima, which should work even better for me
-        # Let's try that
-        # earth = planets["Earth"]
-        # moon = planets["Moon"]
-        # def distance_from_high_tide(time):
-            # m = earth.at(time).observe(moon)
-            # tide_lon = wgs84.latlon_of(m)[1]
-            # dist = np.vstack([
-                # abs(tide_lon.degrees - Landmarks.reference_Portsmouth.longitude.degrees),
-                # abs(tide_lon.degrees - Landmarks.reference_antiPortsmouth.longitude.degrees)
-            # ])
-            # return dist.min(axis=0)
-        # distance_from_high_tide.rough_period = 0.5
+        # Let's try that; implemented in Compute.distance_from_high_tide_raw
         computed_high_tides = skyfield.searchlib.find_minima(
             timescale.utc(year),
             timescale.utc(year+1),
