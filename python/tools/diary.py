@@ -736,7 +736,15 @@ def analyse(options):
         ax.grid(True)
         fig.set_figwidth(50)
         fig.savefig("analyse/tides-diffs.png")
-        # * plot both measured and computed data
+        for event in "high", "low":
+            fig, ax = plt.subplots()
+            ax.plot([t[0]-math.floor(t[0]) for t in locals()[f"measured_{event}_tides"]], "bs", label=f"Measured {event} tide [tt]")
+            ax.plot([t.tt-math.floor(t.tt) for t in locals()[f"computed_{event}_tides"][0]], "rs", label=f"Computed {event} tide [tt]")
+            ax.set_ylabel("Tide instant, offset from noon")
+            ax.legend()
+            ax.grid(True)
+            fig.set_figwidth(50)
+            fig.savefig(f"analyse/{event}-tide-comparison.png")
         # * write differences to csv file (I want them analysable manually)
         # * print summary: largest difference, smallest difference, mean difference
 
